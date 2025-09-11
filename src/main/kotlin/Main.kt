@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
 import androidx.compose.runtime.*
@@ -12,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.onKeyEvent
@@ -123,9 +125,11 @@ fun App() {
                         modifier = Modifier
                             .weight(1f)
                     ) {
-                        val listState = rememberLazyListState()
-                        LazyColumn (
+                        val listState = rememberLazyGridState()
+                        LazyVerticalGrid (
+                            columns = GridCells.Adaptive(320.dp),
                             state = listState,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier
                                 .weight(1f)
@@ -155,7 +159,15 @@ fun App() {
                             }
                         }
                         VerticalScrollbar(
-                            adapter = rememberScrollbarAdapter(listState)
+                            adapter = rememberScrollbarAdapter(listState),
+                            style = ScrollbarStyle(
+                                minimalHeight = 48.dp,
+                                thickness = 8.dp,
+                                shape = RoundedCornerShape(8.dp),
+                                hoverDurationMillis = 300,
+                                hoverColor = MaterialTheme.colors.primary,
+                                unhoverColor = Color.Gray
+                            )
                         )
                     }
 
@@ -204,48 +216,39 @@ fun ItemSample(
 ) {
     val bitmap = remember { loadImageBitmap(FileInputStream(sample.imgPath.toFile())) }
     Card(modifier = Modifier
-        .fillMaxWidth()
+        .width(320.dp)
         .height(240.dp),
         elevation = if (selected) 8.dp else 0.dp,
         onClick = {
             onClick(false)
         }) {
-        Row (
+        Box(
             modifier = Modifier.fillMaxSize()
         ) {
-            Box {
-                Image(
-                    painter = BitmapPainter(bitmap),
-                    contentDescription = null,
-                )
-                Text(
-                    "${index + 1}#${sample.dataPath.name.removeSuffix(".txt")}",
-                    modifier = Modifier
-                        .align(Alignment.TopStart),
-                    color = Color.Yellow
-                )
-                Text(
-                    if (sample.isLabeled()) "标签：${sample.label}" else "无标签",
-                    modifier = Modifier
-                        .align(Alignment.TopEnd),
-                    color = if (sample.isLabeled()) Color.Green else Color.Red
-                )
-            }
-            Box(
+            Image(
+                painter = BitmapPainter(bitmap),
+                contentDescription = null,
+            )
+            Text(
+                "${index + 1}#${sample.dataPath.name.removeSuffix(".txt")}",
                 modifier = Modifier
-                    .fillMaxHeight()
-                    .weight(1f)
-                    .padding(end = 18.dp)
-            ) {
-                OutlinedButton(
-                    content = { Text("打标签")},
-                    onClick = {
-                        onClick(true)
-                    },
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                )
-            }
+                    .align(Alignment.TopStart),
+                color = Color.Yellow
+            )
+            Text(
+                if (sample.isLabeled()) "标签：${sample.label}" else "无标签",
+                modifier = Modifier
+                    .align(Alignment.TopEnd),
+                color = if (sample.isLabeled()) Color.Green else Color.Red
+            )
+            OutlinedButton(
+                content = { Text("标注")},
+                onClick = {
+                    onClick(true)
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+            )
         }
     }
 }
