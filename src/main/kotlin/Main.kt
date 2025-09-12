@@ -9,19 +9,17 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.res.loadImageBitmap
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Window
-import androidx.compose.ui.window.application
-import kotlinx.coroutines.launch
+import androidx.compose.ui.window.*
 import java.io.FileInputStream
 import java.io.IOException
 import java.nio.file.Files
@@ -30,21 +28,23 @@ import java.nio.file.Paths
 import javax.swing.JFileChooser
 import kotlin.io.path.name
 
+const val MESSAGE_DIALOG = 1
+const val EDITABLE_DIALOG = 2
+
 var projectPath: Path = Paths.get("")
-var dataSamples = mutableListOf<DataSample>()
 
 @Composable
 @Preview
-fun App() {
+fun App(
+    uiSamples: SnapshotStateList<DataSample>,
+    labels: SnapshotStateList<String>
+) {
     var shiftPressed = false
-    var selectedIndex by remember { mutableStateOf(-1) }
-    var selectedLabel by remember { mutableStateOf("0") }
+    var selectedIndex by remember { mutableStateOf(0) }
+    var selectedLabel by remember { mutableStateOf("") }
     var labeledCount by remember { mutableStateOf(0) }
-    val dataLabels = remember { mutableStateListOf<String>("0", "1", "2") }
-    val uiSamples = remember { mutableStateListOf<DataSample>() }
 
     MaterialTheme {
-        val scope = rememberCoroutineScope()
         val snackbarHostState = remember { SnackbarHostState() }
         Scaffold(
             modifier = Modifier.fillMaxSize(),
@@ -52,67 +52,39 @@ fun App() {
                 SnackbarHost(snackbarHostState)
             }
         ) {
-            Column(modifier = Modifier
-                .fillMaxSize()
-                .padding(18.dp)
-                .onKeyEvent { event ->
-                    shiftPressed = event.isShiftPressed
-                    true
-                },
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(18.dp)
+                    .onKeyEvent { event ->
+                        shiftPressed = event.isShiftPressed
+                        true
+                    },
             ) {
-                var text by remember { mutableStateOf("") }
-
-                TextButton(
-                    content = { Text("打开项目") },
-                    onClick = {
-                        loadDataFromPath()
-                        uiSamples.clear()
-                        uiSamples.addAll(dataSamples)
-                    }
-                )
-
-                Row(
-                    verticalAlignment = Alignment.Bottom
-                ) {
-                    TextField(
-                        value = text,
-                        placeholder = { Text("请输入标签") },
-                        singleLine = true,
-                        onValueChange = {
-                            text = it
-                        }
-                    )
-                    TextButton(
-                        content = { Text("添加标签") },
-                        onClick = {
-                            if (text.isNotEmpty()) {
-                                dataLabels.add(text)
-                                text = ""
-                            }
-                        }
-                    )
-
-                    TextButton(
-                        content = { Text("清除标签") },
-                        onClick = {
-                            dataLabels.clear()
-                        }
-                    )
-                }
-                LazyRow {
-                    items(dataLabels.toList()) {label ->
-                        Label(
-                            text = label,
-                            selected = selectedLabel == label,
-                            onClick = {
-                                selectedLabel = if (selectedLabel == label) {
-                                    ""
-                                } else {
-                                    label
+                if (uiSamples.isNotEmpty()) {
+                    LazyRow {
+                        items(labels.toList()) { label ->
+                            Label(
+                                text = label,
+                                selected = selectedLabel == label,
+                                onClick = {
+                                    selectedLabel = if (selectedLabel == label) {
+                                        ""
+                                    } else {
+                                        label
+                                    }
                                 }
-                            }
-                        )
+                            )
+                        }
                     }
+
+                    if (labels.isNotEmpty() && selectedLabel.isEmpty()) {
+                        selectedLabel = labels.first()
+                    }
+                }
+
+                if (labels.isEmpty()) {
+                    selectedLabel = ""
                 }
 
                 Spacer(modifier = Modifier.height(18.dp))
@@ -120,13 +92,19 @@ fun App() {
                     modifier = Modifier
                         .fillMaxWidth()
                 ) {
-                    Text("进度：${labeledCount}/${dataSamples.count()}")
+                    if (uiSamples.isNotEmpty()) {
+                        Row {
+                            Text("位置：${selectedIndex}")
+                            Spacer(modifier = Modifier.width(18.dp))
+                            Text("进度：${labeledCount}/${uiSamples.count()}")
+                        }
+                    }
                     Row(
                         modifier = Modifier
                             .weight(1f)
                     ) {
                         val listState = rememberLazyGridState()
-                        LazyVerticalGrid (
+                        LazyVerticalGrid(
                             columns = GridCells.Adaptive(320.dp),
                             state = listState,
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -138,21 +116,25 @@ fun App() {
                                 ItemSample(index = index, sample = sample, onClick = { isLabel ->
                                     if (isLabel) {
                                         sample.label = selectedLabel
+                                        val snapshot = uiSamples.toList()
                                         uiSamples.clear()
-                                        uiSamples.addAll(dataSamples)
+                                        uiSamples.addAll(snapshot)
                                     } else {
                                         if (shiftPressed && selectedIndex != -1) {
-                                            for (i in selectedIndex.coerceAtMost(index) .. selectedIndex.coerceAtLeast(index)) {
-                                                dataSamples[i].label = selectedLabel
+                                            for (i in selectedIndex.coerceAtMost(index)..selectedIndex.coerceAtLeast(
+                                                index
+                                            )) {
+                                                uiSamples[i].label = selectedLabel
                                             }
+                                            val snapshot = uiSamples.toList()
                                             uiSamples.clear()
-                                            uiSamples.addAll(dataSamples)
+                                            uiSamples.addAll(snapshot)
                                         } else {
                                             selectedIndex = index
                                         }
                                     }
                                     labeledCount = 0
-                                    dataSamples.forEach {
+                                    uiSamples.forEach {
                                         if (it.isLabeled()) labeledCount++
                                     }
                                 }, selected = selectedIndex == index)
@@ -170,19 +152,6 @@ fun App() {
                             )
                         )
                     }
-
-                    Button(
-                        onClick = {
-                            exportLabels()
-                            scope.launch {
-                                snackbarHostState.showSnackbar("导出完成！")
-                            }
-                        },
-                        modifier = Modifier
-                            .align(Alignment.End),
-                        enabled = labeledCount != 0 && labeledCount == dataSamples.size,
-                        content = { Text("导出标签") }
-                    )
                 }
             }
         }
@@ -201,7 +170,7 @@ fun Label(
         shape = RoundedCornerShape(3.dp),
         onClick = onClick,
         colors = ChipDefaults.chipColors(
-            backgroundColor = if (selected) MaterialTheme.colors.primary else Color.Gray
+            backgroundColor = if (selected) MaterialTheme.colors.primary else Color(0xFFB7B7B7)
         )
     )
 }
@@ -239,10 +208,11 @@ fun ItemSample(
                 if (sample.isLabeled()) "标签：${sample.label}" else "无标签",
                 modifier = Modifier
                     .align(Alignment.TopEnd),
-                color = if (sample.isLabeled()) Color.Green else Color.Red
+                color = if (sample.isLabeled()) Color.Green else Color.Red,
+                fontWeight = FontWeight.Bold
             )
             OutlinedButton(
-                content = { Text("标注")},
+                content = { Text("标注") },
                 onClick = {
                     onClick(true)
                 },
@@ -253,12 +223,12 @@ fun ItemSample(
     }
 }
 
-fun exportLabels() {
-    val exportPath = projectPath.resolve("${projectPath.name}_已标注完成")
+fun exportLabels(samples: List<DataSample>) {
+    val exportPath = projectPath.resolve("${projectPath.name}（已标注）")
     if (!exportPath.toFile().mkdir()) {
         throw IOException("无法创建导出目录 $exportPath")
     }
-    dataSamples.forEach {
+    samples.forEach {
         val labelPath = exportPath.resolve(it.label)
         if (!labelPath.toFile().exists() && !labelPath.toFile().mkdir()) {
             throw IOException("无法创建标签目录 $labelPath")
@@ -268,23 +238,24 @@ fun exportLabels() {
     }
 }
 
-fun loadDataFromPath() {
+fun loadDataFromPath(): List<DataSample> {
     val chooser = JFileChooser()
     chooser.fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
-    dataSamples.clear()
+    val samples = mutableListOf<DataSample>()
     if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
         Files.list(Paths.get(chooser.selectedFile.absolutePath))
-            .forEach {imgPath ->
+            .forEach { imgPath ->
                 if (imgPath.name.endsWith(".jpg")) {
                     val dataPath = imgPath.parent.resolve(imgPath.name.replace(".jpg", ".txt"))
                     if (dataPath.toFile().exists()) {
-                        dataSamples.add(DataSample(imgPath, dataPath))
+                        samples.add(DataSample(imgPath, dataPath))
                     }
                 }
             }
     }
     projectPath = chooser.selectedFile.toPath()
-    dataSamples.sortBy { it.imgPath }
+    samples.sortBy { it.imgPath }
+    return samples
 }
 
 data class DataSample(val imgPath: Path, val dataPath: Path, var label: String = "") {
@@ -296,6 +267,114 @@ fun main() = application {
         onCloseRequest = ::exitApplication,
         title = "Quick Label"
     ) {
-        App()
+        val samples = remember { mutableStateListOf<DataSample>() }
+        val labels = remember { mutableStateListOf<String>("0", "1", "2") }
+        var dialogOpen by remember { mutableStateOf(false) }
+        var dialogType by remember { mutableStateOf(MESSAGE_DIALOG) }
+        var dialogTitle by remember { mutableStateOf("") }
+        var dialogContent by remember { mutableStateOf("") }
+        var dialogPlaceholder by remember { mutableStateOf("") }
+        var dialogDismissCallback by remember { mutableStateOf<() -> Unit>({}) }
+        MenuBar {
+            Menu("文件") {
+                Item("打开", onClick = {
+                    samples.clear()
+                    samples.addAll(loadDataFromPath())
+                })
+                Item("导出", onClick = {
+                    if (samples.isNotEmpty() && samples.find { !it.isLabeled() } == null) {
+                        exportLabels(samples)
+                        dialogType = MESSAGE_DIALOG
+                        dialogTitle = "提示"
+                        dialogContent = "导出完成！"
+                        dialogOpen = true
+                    } else {
+                        dialogType = MESSAGE_DIALOG
+                        dialogTitle = "注意"
+                        dialogContent = if (samples.isEmpty()) "无项目！" else "部分数据缺少标签，请检查！"
+                        dialogOpen = true
+                    }
+                })
+            }
+            Menu("标签") {
+                Item("新增", onClick = {
+                    dialogTitle = "新增标签"
+                    dialogContent = ""
+                    dialogPlaceholder = "请输入标签名"
+                    dialogType = EDITABLE_DIALOG
+                    dialogDismissCallback = {
+                        if (dialogContent.isNotEmpty() && !labels.contains(dialogContent)) {
+                            labels.add(dialogContent)
+                        }
+                        println(dialogContent)
+                    }
+                    dialogOpen = true
+                })
+                Item(
+                    "删除", onClick = {
+                    labels.clear()
+                })
+            }
+        }
+        if (dialogOpen) {
+            if (dialogType == MESSAGE_DIALOG) {
+                DialogWindow(
+                    onCloseRequest = { dialogOpen = false },
+                    title = dialogTitle
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .weight(1f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(dialogContent)
+                        }
+                    }
+                }
+            } else if (dialogType == EDITABLE_DIALOG) {
+                DialogWindow(
+                    onCloseRequest = { dialogOpen = false },
+                    title = dialogTitle
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .weight(1f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            TextField(
+                                value = dialogContent,
+                                onValueChange = {
+                                    dialogContent = it
+                                },
+                                placeholder = {
+                                    Text(dialogPlaceholder)
+                                }
+                            )
+                        }
+                        TextButton(
+                            onClick = {
+                                dialogOpen = false
+                                dialogDismissCallback()
+                            },
+                            content = { Text("确定") },
+                            modifier = Modifier
+                                .align(Alignment.End)
+                        )
+                    }
+                }
+            }
+        }
+        App(
+            uiSamples = samples,
+            labels = labels
+        )
     }
 }
