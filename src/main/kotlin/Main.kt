@@ -97,6 +97,11 @@ fun App(
                             Text("位置：${selectedIndex}")
                             Spacer(modifier = Modifier.width(18.dp))
                             Text("进度：${labeledCount}/${uiSamples.count()}")
+                            Spacer(modifier = Modifier.width(24.dp))
+                            labels.forEach { label ->
+                                Text("标签$label：${uiSamples.count { it.label == label }}个")
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
                         }
                     }
                     Row(
@@ -187,7 +192,7 @@ fun ItemSample(
     Card(modifier = Modifier
         .width(320.dp)
         .height(240.dp),
-        elevation = if (selected) 8.dp else 0.dp,
+        backgroundColor = if (selected) Color.Gray else MaterialTheme.colors.surface,
         onClick = {
             onClick(false)
         }) {
@@ -252,8 +257,8 @@ fun loadDataFromPath(): List<DataSample> {
                     }
                 }
             }
+        projectPath = chooser.selectedFile.toPath()
     }
-    projectPath = chooser.selectedFile.toPath()
     samples.sortBy { it.imgPath }
     return samples
 }
@@ -278,8 +283,11 @@ fun main() = application {
         MenuBar {
             Menu("文件") {
                 Item("打开", onClick = {
-                    samples.clear()
-                    samples.addAll(loadDataFromPath())
+                    val newSamples = loadDataFromPath()
+                    if (newSamples.isNotEmpty()) {
+                        samples.clear()
+                        samples.addAll(newSamples)
+                    }
                 })
                 Item("导出", onClick = {
                     if (samples.isNotEmpty() && samples.find { !it.isLabeled() } == null) {
