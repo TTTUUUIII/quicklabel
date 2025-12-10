@@ -8,34 +8,50 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.runtime.*
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.res.loadImageBitmap
+import androidx.compose.ui.res.loadSvgPainter
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.TextUnitType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.*
+import com.sun.tools.javac.Main
+import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
+import java.io.PrintWriter
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import javax.swing.JFileChooser
 import kotlin.io.path.name
+import kotlin.io.path.outputStream
 
 const val MESSAGE_DIALOG = 1
 const val EDITABLE_DIALOG = 2
 
-var projectPath: Path = Paths.get("")
+private var projectPath: Path? = null
+private var savePath: Path? = null
 
 @Composable
 @Preview
 fun App(
+    projectName: String,
     uiSamples: SnapshotStateList<DataSample>,
     labels: SnapshotStateList<String>
 ) {
@@ -94,6 +110,8 @@ fun App(
                 ) {
                     if (uiSamples.isNotEmpty()) {
                         Row {
+                            Text("项目：${projectName}", color = Color.Blue)
+                            Spacer(modifier = Modifier.width(18.dp))
                             Text("位置：${selectedIndex}")
                             Spacer(modifier = Modifier.width(18.dp))
                             Text("进度：${labeledCount}/${uiSamples.count()}")
@@ -188,7 +206,14 @@ fun ItemSample(
     onClick: (Boolean) -> Unit,
     selected: Boolean
 ) {
-    val bitmap = remember { loadImageBitmap(FileInputStream(sample.imgPath.toFile())) }
+    val imagePainter = remember {
+        try {
+            BitmapPainter(loadImageBitmap(FileInputStream(sample.imgPath.toFile())))
+        } catch (e: Exception) {
+            e.printStackTrace(System.err)
+            loadSvgPainterFromResource("ic_broken_image", Density(10f))
+        }
+    }
     Card(modifier = Modifier
         .width(320.dp)
         .height(240.dp),
@@ -200,7 +225,7 @@ fun ItemSample(
             modifier = Modifier.fillMaxSize()
         ) {
             Image(
-                painter = BitmapPainter(bitmap),
+                painter = imagePainter,
                 contentDescription = null,
             )
             Text(
@@ -228,12 +253,16 @@ fun ItemSample(
     }
 }
 
-fun exportLabels(samples: List<DataSample>) {
-    val exportPath = projectPath.resolve("${projectPath.name}（已标注）")
+fun exportLabeledData(samples: List<DataSample>, path: Path? = null) {
+    val exportPath = path?.resolve("${projectPath!!.name}（已标注）")
+        ?: projectPath!!.resolve("${projectPath!!.name}（已标注）")
     if (!exportPath.toFile().mkdir()) {
         throw IOException("无法创建导出目录 $exportPath")
     }
-    samples.forEach {
+    for (it in samples) {
+        if (it.label.lowercase() == "trash") {
+            continue
+        }
         val labelPath = exportPath.resolve(it.label)
         if (!labelPath.toFile().exists() && !labelPath.toFile().mkdir()) {
             throw IOException("无法创建标签目录 $labelPath")
@@ -243,12 +272,19 @@ fun exportLabels(samples: List<DataSample>) {
     }
 }
 
-fun loadDataFromPath(): List<DataSample> {
-    val chooser = JFileChooser()
+fun chooseDirectory(base: File? = null): File? {
+    val chooser = JFileChooser(base)
     chooser.fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
-    val samples = mutableListOf<DataSample>()
     if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
-        Files.list(Paths.get(chooser.selectedFile.absolutePath))
+        return chooser.selectedFile
+    }
+    return null
+}
+
+fun loadDataFromPath(): List<DataSample> {
+    val samples = mutableListOf<DataSample>()
+    chooseDirectory(projectPath?.parent?.toFile())?.let {
+        Files.list(Paths.get(it.absolutePath))
             .forEach { imgPath ->
                 if (imgPath.name.endsWith(".jpg")) {
                     val dataPath = imgPath.parent.resolve(imgPath.name.replace(".jpg", ".txt"))
@@ -257,9 +293,9 @@ fun loadDataFromPath(): List<DataSample> {
                     }
                 }
             }
-        projectPath = chooser.selectedFile.toPath()
+        projectPath = it.toPath()
+        samples.sortBy { it.imgPath }
     }
-    samples.sortBy { it.imgPath }
     return samples
 }
 
@@ -272,8 +308,9 @@ fun main() = application {
         onCloseRequest = ::exitApplication,
         title = "Quick Label"
     ) {
+        var projectName by remember { mutableStateOf("") }
         val samples = remember { mutableStateListOf<DataSample>() }
-        val labels = remember { mutableStateListOf<String>("0", "1", "2") }
+        val labels = remember { mutableStateListOf<String>("0", "1", "2", "Trash") }
         var dialogOpen by remember { mutableStateOf(false) }
         var dialogType by remember { mutableStateOf(MESSAGE_DIALOG) }
         var dialogTitle by remember { mutableStateOf("") }
@@ -281,31 +318,66 @@ fun main() = application {
         var dialogPlaceholder by remember { mutableStateOf("") }
         var dialogDismissCallback by remember { mutableStateOf<() -> Unit>({}) }
         MenuBar {
+            val openIcon = remember {
+                loadSvgPainterFromResource("ic_folder_open")
+            }
+            val saveIcon = remember {
+                loadSvgPainterFromResource("ic_save")
+            }
+            val saveAsIcon = remember {
+                loadSvgPainterFromResource("ic_save_as")
+            }
+            val addIcon = rememberVectorPainter(Icons.Outlined.Add)
+            val delIcon = rememberVectorPainter(Icons.Outlined.Delete)
             Menu("文件") {
-                Item("打开", onClick = {
+                Item("打开", icon = openIcon, onClick = {
                     val newSamples = loadDataFromPath()
                     if (newSamples.isNotEmpty()) {
+                        projectName = projectPath!!.name
                         samples.clear()
                         samples.addAll(newSamples)
                     }
                 })
-                Item("导出", onClick = {
-                    if (samples.isNotEmpty() && samples.find { !it.isLabeled() } == null) {
-                        exportLabels(samples)
+                Item("保存", icon = saveIcon, onClick = {
+                    val needLabelSampleNames = samples
+                        .filter { !it.isLabeled() }
+                        .map { it.dataPath.name }
+                    if (samples.isNotEmpty() && needLabelSampleNames.isEmpty()) {
+                        exportLabeledData(samples)
                         dialogType = MESSAGE_DIALOG
                         dialogTitle = "提示"
-                        dialogContent = "导出完成！"
+                        dialogContent = "保存完成！"
                         dialogOpen = true
                     } else {
                         dialogType = MESSAGE_DIALOG
                         dialogTitle = "注意"
-                        dialogContent = if (samples.isEmpty()) "无项目！" else "部分数据缺少标签，请检查！"
+                        dialogContent = if (samples.isEmpty()) "无项目！" else "数据${needLabelSampleNames}缺少标签，请检查！"
+                        dialogOpen = true
+                    }
+                })
+                Item("保存至", icon = saveAsIcon, onClick = {
+                    val needLabelSampleNames = samples
+                        .filter { !it.isLabeled() }
+                        .map { it.dataPath.name }
+                    if (samples.isNotEmpty() && needLabelSampleNames.isEmpty()) {
+                        chooseDirectory(savePath?.toFile())?.let {
+                            exportLabeledData(samples, it.toPath())
+                            dialogType = MESSAGE_DIALOG
+                            dialogTitle = "提示"
+                            dialogContent = "保存完成！"
+                            dialogOpen = true
+                            savePath = it.toPath()
+                        }
+                    } else {
+                        dialogType = MESSAGE_DIALOG
+                        dialogTitle = "注意"
+                        dialogContent = if (samples.isEmpty()) "无项目！" else "数据${needLabelSampleNames}缺少标签，请检查！"
                         dialogOpen = true
                     }
                 })
             }
             Menu("标签") {
-                Item("新增", onClick = {
+                Item("新增", icon = addIcon, onClick = {
                     dialogTitle = "新增标签"
                     dialogContent = ""
                     dialogPlaceholder = "请输入标签名"
@@ -319,7 +391,7 @@ fun main() = application {
                     dialogOpen = true
                 })
                 Item(
-                    "删除", onClick = {
+                    "删除", icon = delIcon, onClick = {
                     labels.clear()
                 })
             }
@@ -328,7 +400,8 @@ fun main() = application {
             if (dialogType == MESSAGE_DIALOG) {
                 DialogWindow(
                     onCloseRequest = { dialogOpen = false },
-                    title = dialogTitle
+                    title = dialogTitle,
+                    state = DialogState(width = 280.dp, height = 210.dp)
                 ) {
                     Column(
                         modifier = Modifier.fillMaxSize()
@@ -339,7 +412,7 @@ fun main() = application {
                                 .weight(1f),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(dialogContent)
+                            Text(dialogContent, fontSize = TextUnit(18f, TextUnitType.Sp))
                         }
                     }
                 }
@@ -381,8 +454,18 @@ fun main() = application {
             }
         }
         App(
+            projectName = projectName,
             uiSamples = samples,
             labels = labels
         )
     }
+}
+
+fun loadSvgPainterFromResource(resName: String): Painter = loadSvgPainterFromResource(resName,
+    Density(1.0f))
+
+fun loadSvgPainterFromResource(resName: String, density: Density): Painter = if (resName.lowercase().endsWith(".svg")) {
+    loadSvgPainter(Main::class.java.classLoader.getResourceAsStream(resName)!!, density)
+} else {
+    loadSvgPainter(Main::class.java.classLoader.getResourceAsStream("${resName}.svg")!!, density)
 }

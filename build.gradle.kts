@@ -22,14 +22,20 @@ dependencies {
     implementation(compose.desktop.currentOs)
 }
 
+
+
 compose.desktop {
     application {
         mainClass = "MainKt"
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
-            packageName = "quicklabel"
+            packageName = "QuickLabel"
             packageVersion = "1.0.0"
+
+            windows {
+                iconFile = File("src/main/resources/icon.png")
+            }
         }
     }
 }
