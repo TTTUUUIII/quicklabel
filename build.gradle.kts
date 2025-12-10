@@ -34,6 +34,7 @@ compose.desktop {
             packageVersion = "1.0.0"
 
             windows {
+                includeAllModules = true
                 iconFile = File("src/main/resources/icon.png")
             }
         }

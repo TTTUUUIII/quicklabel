@@ -412,7 +412,7 @@ fun main() = application {
                                 .weight(1f),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(dialogContent, fontSize = TextUnit(18f, TextUnitType.Sp))
+                            Text(dialogContent, fontSize = TextUnit(16f, TextUnitType.Sp))
                         }
                     }
                 }
