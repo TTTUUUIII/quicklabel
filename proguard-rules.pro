@@ -1,0 +1,6 @@
+-keep class com.formdev.** { *; }
+-keep class org.jdesktop.** { *; }
+-dontwarn com.formdev.**
+-dontwarn org.jdesktop.**
+-keep class javax.swing.** { *; }
+-keep class java.awt.** { *; }

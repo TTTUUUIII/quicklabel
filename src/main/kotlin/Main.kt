@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
@@ -15,38 +16,44 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.loadImageBitmap
 import androidx.compose.ui.res.loadSvgPainter
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.TextUnitType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.*
+import com.formdev.flatlaf.FlatLightLaf
 import com.sun.tools.javac.Main
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
-import java.io.PrintWriter
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import javax.swing.JFileChooser
 import kotlin.io.path.name
-import kotlin.io.path.outputStream
 
 const val MESSAGE_DIALOG = 1
 const val EDITABLE_DIALOG = 2
 
 private var projectPath: Path? = null
 private var savePath: Path? = null
+
+val lightColors = lightColors(
+    primary = Color(0xFF44ACFF),
+    onPrimary = Color(0xFFFFFFFF)
+)
 
 @Composable
 @Preview
@@ -59,8 +66,9 @@ fun App(
     var selectedIndex by remember { mutableStateOf(0) }
     var selectedLabel by remember { mutableStateOf("") }
     var labeledCount by remember { mutableStateOf(0) }
-
-    MaterialTheme {
+    MaterialTheme(
+        colors = lightColors
+    ) {
         val snackbarHostState = remember { SnackbarHostState() }
         Scaffold(
             modifier = Modifier.fillMaxSize(),
@@ -102,23 +110,24 @@ fun App(
                 if (labels.isEmpty()) {
                     selectedLabel = ""
                 }
-
                 Spacer(modifier = Modifier.height(18.dp))
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                 ) {
                     if (uiSamples.isNotEmpty()) {
-                        Row {
-                            Text("项目：${projectName}", color = Color.Blue)
-                            Spacer(modifier = Modifier.width(18.dp))
-                            Text("位置：${selectedIndex}")
-                            Spacer(modifier = Modifier.width(18.dp))
-                            Text("进度：${labeledCount}/${uiSamples.count()}")
-                            Spacer(modifier = Modifier.width(24.dp))
-                            labels.forEach { label ->
-                                Text("标签$label：${uiSamples.count { it.label == label }}个")
-                                Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Row {
+                                Text("项目：${projectName}", color = Color.Blue)
+                                Spacer(modifier = Modifier.width(18.dp))
+                                Text("位置：${selectedIndex}")
+                                Spacer(modifier = Modifier.width(18.dp))
+                                Text("进度：${labeledCount}/${uiSamples.count()}")
+                                Spacer(modifier = Modifier.width(24.dp))
+                                labels.forEach { label ->
+                                    Text("标签$label：${uiSamples.count { it.label == label }}个")
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                }
                             }
                         }
                     }
@@ -216,28 +225,41 @@ fun ItemSample(
     }
     Card(modifier = Modifier
         .width(320.dp)
-        .height(240.dp),
-        backgroundColor = if (selected) Color.Gray else MaterialTheme.colors.surface,
+        .height(240.dp)
+        .then(
+            if (selected) {
+                Modifier.border(4.dp, MaterialTheme.colors.primary, RoundedCornerShape(4.dp))
+            } else Modifier
+
+        ),
+        backgroundColor = if (selected) MaterialTheme.colors.primary else MaterialTheme.colors.surface,
+        elevation = if (selected) 8.dp else 0.dp,
         onClick = {
             onClick(false)
         }) {
-        Box(
-            modifier = Modifier.fillMaxSize()
+        Image(
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp)),
+            painter = imagePainter,
+            contentDescription = null,
+            contentScale = ContentScale.FillBounds
+        )
+        Box(modifier = Modifier
+            .fillMaxSize()
+            .padding(8.dp)
         ) {
-            Image(
-                painter = imagePainter,
-                contentDescription = null,
-            )
             Text(
                 "${index + 1}#${sample.dataPath.name.removeSuffix(".txt")}",
                 modifier = Modifier
                     .align(Alignment.TopStart),
-                color = Color.Yellow
+                color = MaterialTheme.colors.onPrimary
             )
             Text(
-                if (sample.isLabeled()) "标签：${sample.label}" else "无标签",
                 modifier = Modifier
-                    .align(Alignment.TopEnd),
+                    .align(Alignment.TopEnd)
+                    .background(MaterialTheme.colors.surface, CircleShape)
+                    .padding(8.dp, 0.dp),
+                text = if (sample.isLabeled()) "标签：${sample.label}" else "无标签",
                 color = if (sample.isLabeled()) Color.Green else Color.Red,
                 fontWeight = FontWeight.Bold
             )
@@ -304,9 +326,11 @@ data class DataSample(val imgPath: Path, val dataPath: Path, var label: String =
 }
 
 fun main() = application {
+    FlatLightLaf.setup()
     Window(
         onCloseRequest = ::exitApplication,
-        title = "Quick Label"
+        title = "Quick Label",
+        icon = painterResource("ic_launcher.ico")
     ) {
         var projectName by remember { mutableStateOf("") }
         val samples = remember { mutableStateListOf<DataSample>() }
@@ -346,7 +370,7 @@ fun main() = application {
                         exportLabeledData(samples)
                         dialogType = MESSAGE_DIALOG
                         dialogTitle = "提示"
-                        dialogContent = "保存完成！"
+                        dialogContent = "保存完成！^_^"
                         dialogOpen = true
                     } else {
                         dialogType = MESSAGE_DIALOG
