@@ -384,7 +384,7 @@ fun main() = application {
                         .filter { !it.isLabeled() }
                         .map { it.dataPath.name }
                     if (samples.isNotEmpty() && needLabelSampleNames.isEmpty()) {
-                        chooseDirectory(savePath?.toFile())?.let {
+                        chooseDirectory(savePath?.toFile() ?: projectPath?.parent?.toFile())?.let {
                             exportLabeledData(samples, it.toPath())
                             dialogType = MESSAGE_DIALOG
                             dialogTitle = "提示"
