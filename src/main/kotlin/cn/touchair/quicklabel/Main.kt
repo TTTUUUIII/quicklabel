@@ -1,3 +1,5 @@
+package cn.touchair.quicklabel
+
 import androidx.compose.desktop.ui.tooling.preview.Preview
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -41,7 +43,9 @@ import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.util.regex.Pattern
 import javax.swing.JFileChooser
+import kotlin.io.path.absolutePathString
 import kotlin.io.path.name
 
 const val MESSAGE_DIALOG = 1
@@ -65,7 +69,6 @@ fun App(
     var shiftPressed = false
     var selectedIndex by remember { mutableStateOf(0) }
     var selectedLabel by remember { mutableStateOf("") }
-    var labeledCount by remember { mutableStateOf(0) }
     MaterialTheme(
         colors = lightColors
     ) {
@@ -122,6 +125,10 @@ fun App(
                                 Spacer(modifier = Modifier.width(18.dp))
                                 Text("位置：${selectedIndex}")
                                 Spacer(modifier = Modifier.width(18.dp))
+                                var labeledCount = 0
+                                uiSamples.forEach {
+                                    if (it.isLabeled()) labeledCount++;
+                                }
                                 Text("进度：${labeledCount}/${uiSamples.count()}")
                                 Spacer(modifier = Modifier.width(24.dp))
                                 labels.forEach { label ->
@@ -148,6 +155,7 @@ fun App(
                                 ItemSample(index = index, sample = sample, onClick = { isLabel ->
                                     if (isLabel) {
                                         sample.label = selectedLabel
+                                        sample.isBotRes = false
                                         val snapshot = uiSamples.toList()
                                         uiSamples.clear()
                                         uiSamples.addAll(snapshot)
@@ -157,6 +165,7 @@ fun App(
                                                 index
                                             )) {
                                                 uiSamples[i].label = selectedLabel
+                                                uiSamples[i].isBotRes = false
                                             }
                                             val snapshot = uiSamples.toList()
                                             uiSamples.clear()
@@ -164,10 +173,6 @@ fun App(
                                         } else {
                                             selectedIndex = index
                                         }
-                                    }
-                                    labeledCount = 0
-                                    uiSamples.forEach {
-                                        if (it.isLabeled()) labeledCount++
                                     }
                                 }, selected = selectedIndex == index)
                             }
@@ -271,6 +276,17 @@ fun ItemSample(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
             )
+
+            if (sample.isBotRes) {
+                Icon(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .align(Alignment.BottomStart),
+                    painter = loadSvgPainterFromResource("ic_smart_toy"),
+                    contentDescription = null,
+                    tint = Color.Cyan
+                )
+            }
         }
     }
 }
@@ -321,7 +337,7 @@ fun loadDataFromPath(): List<DataSample> {
     return samples
 }
 
-data class DataSample(val imgPath: Path, val dataPath: Path, var label: String = "") {
+data class DataSample(val imgPath: Path, val dataPath: Path, var label: String = "", var isBotRes: Boolean = false) {
     fun isLabeled(): Boolean = label.isNotEmpty()
 }
 
@@ -329,7 +345,7 @@ fun main() = application {
     FlatLightLaf.setup()
     Window(
         onCloseRequest = ::exitApplication,
-        title = "Quick Label",
+        title = "Quick cn.touchair.quicklabel.Label",
         icon = painterResource("ic_launcher.ico")
     ) {
         var projectName by remember { mutableStateOf("") }
@@ -341,6 +357,7 @@ fun main() = application {
         var dialogContent by remember { mutableStateOf("") }
         var dialogPlaceholder by remember { mutableStateOf("") }
         var dialogDismissCallback by remember { mutableStateOf<() -> Unit>({}) }
+        var autoLabel by remember { mutableStateOf(true) }
         MenuBar {
             val openIcon = remember {
                 loadSvgPainterFromResource("ic_folder_open")
@@ -360,6 +377,17 @@ fun main() = application {
                         projectName = projectPath!!.name
                         samples.clear()
                         samples.addAll(newSamples)
+                        projectPath?.let {
+                            if (autoLabel) {
+                                callAssistant(it.absolutePathString()) { index, name, label ->
+                                    val position = samples.indexOfFirst { it.dataPath.name == name }
+                                    if (position != -1) {
+                                        val oldSample = samples[position]
+                                        samples[position] = DataSample(oldSample.imgPath, oldSample.dataPath, label, true)
+                                    }
+                                }
+                            }
+                        }
                     }
                 })
                 Item("保存", icon = saveIcon, onClick = {
@@ -418,6 +446,15 @@ fun main() = application {
                     "删除", icon = delIcon, onClick = {
                     labels.clear()
                 })
+            }
+            Menu("高级") {
+                CheckboxItem(
+                    "自动标注",
+                    checked = autoLabel,
+                    onCheckedChange = {
+                        autoLabel = !autoLabel
+                    }
+                )
             }
         }
         if (dialogOpen) {
@@ -492,4 +529,30 @@ fun loadSvgPainterFromResource(resName: String, density: Density): Painter = if 
     loadSvgPainter(Main::class.java.classLoader.getResourceAsStream(resName)!!, density)
 } else {
     loadSvgPainter(Main::class.java.classLoader.getResourceAsStream("${resName}.svg")!!, density)
+}
+
+fun callAssistant(path: String, callback: (Int, String, String) -> Unit) {
+    var exeFile = File("ultrasonic_main.exe")
+    if (!exeFile.exists()) {
+        val assistantHomeDir = System.getenv("QUICK_LABEL_ASSISTANT_HOME") ?: ""
+        exeFile = File(assistantHomeDir, "ultrasonic_main.exe")
+    }
+    if (exeFile.exists()) {
+        Thread{
+            val process = ProcessBuilder()
+                .command(exeFile.absolutePath, "--dir", path, "--no-pretty")
+                .start()
+
+            val pattern = Pattern.compile("Pridect (.*?) => (\\d)")
+            var index = 0
+            process.inputStream.bufferedReader().useLines { lines ->
+                lines.forEach { line ->
+                    val matcher = pattern.matcher(line)
+                    if (matcher.find()) {
+                        callback(index++, matcher.group(1), matcher.group(2))
+                    }
+                }
+            }
+        }.start()
+    }
 }

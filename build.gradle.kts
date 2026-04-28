@@ -1,4 +1,7 @@
+import org.gradle.internal.extensions.core.serviceOf
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import java.nio.file.Paths
+import kotlin.io.path.exists
 
 plugins {
     kotlin("jvm")
@@ -27,7 +30,7 @@ dependencies {
 
 compose.desktop {
     application {
-        mainClass = "MainKt"
+        mainClass = "cn.touchair.quicklabel.MainKt"
 
         buildTypes {
             release {
@@ -40,10 +43,9 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "quick-label"
-            packageVersion = "1.0.2"
+            packageVersion = "1.0.3"
 
             windows {
-                includeAllModules = true
                 iconFile = File("src/main/resources/ic_launcher.ico")
                 upgradeUuid = "57ccadbb-a7c2-4d31-9e18-de17e2575144"
             }
@@ -52,5 +54,44 @@ compose.desktop {
                 iconFile = File("src/main/resources/ic_launcher.png")
             }
         }
+    }
+}
+
+tasks.register("buildReleaseJarForWindows") {
+    dependsOn("packageReleaseUberJarForCurrentOS")
+    val output = Paths.get("build/app/release")
+    if (!output.exists()) {
+        output.toFile().mkdirs()
+    }
+    val runtimeDir = output.resolve("runtime")
+    if (!runtimeDir.toFile().exists()) {
+        val execOps = serviceOf<ExecOperations>()
+        execOps.exec {
+            commandLine("cmd.exe", "/c",
+                "jlink --add-modules java.base,java.desktop,jdk.compiler --strip-debug --no-header-files --no-man-pages --output $runtimeDir")
+        }
+    }
+    val buildJarsPath = Paths.get("build/compose/jars")
+    val jarsFiles = buildJarsPath.toFile().listFiles { file ->
+        file.name.endsWith(".jar")
+    }
+
+    if (jarsFiles.isNotEmpty()) {
+        val jarFile = output.resolve("lib.jar").toFile()
+        if (jarFile.exists()) {
+            jarFile.delete()
+        }
+        jarsFiles.first().copyTo(jarFile)
+    }
+    val launchScript = output.resolve("run.bat").toFile()
+    if (!launchScript.exists()) {
+        launchScript.createNewFile()
+        launchScript.writeText("""
+        @echo off
+        pushd "%~dp0"
+        start "" ".\runtime\bin\javaw.exe" -jar lib.jar
+        popd
+        exit
+    """.trimIndent())
     }
 }
