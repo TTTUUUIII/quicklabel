@@ -357,7 +357,7 @@ fun main() = application {
         var dialogContent by remember { mutableStateOf("") }
         var dialogPlaceholder by remember { mutableStateOf("") }
         var dialogDismissCallback by remember { mutableStateOf<() -> Unit>({}) }
-        var autoLabel by remember { mutableStateOf(true) }
+        var autoLabel by remember { mutableStateOf(Settings.getBool("advance.autolabel", true)) }
         MenuBar {
             val openIcon = remember {
                 loadSvgPainterFromResource("ic_folder_open")
@@ -453,6 +453,7 @@ fun main() = application {
                     checked = autoLabel,
                     onCheckedChange = {
                         autoLabel = !autoLabel
+                        Settings.putBool("advance.autolabel", autoLabel)
                     }
                 )
             }

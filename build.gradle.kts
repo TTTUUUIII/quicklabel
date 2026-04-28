@@ -43,7 +43,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "quick-label"
-            packageVersion = "1.0.3"
+            packageVersion = "1.0.4"
 
             windows {
                 iconFile = File("src/main/resources/ic_launcher.ico")
